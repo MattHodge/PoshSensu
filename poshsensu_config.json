@@ -1,0 +1,41 @@
+{
+  "sensu_socket_ip": "localhost",
+  "sensu_socket_port": "3030",
+  "sensu_socket_protocol": "tcp",
+  "log_directory": "C:\\Test\\Logs",
+  "checks_directory": ".\\Checks",
+  "check_groups": [
+    {
+      "group_name": "quickchecks",
+      "max_execution_time": 30,
+      "ttl": 60,
+      "checks": [
+        {
+          "name": "service_bits",
+          "type": "metric",
+          "command": "check_service.ps1",
+          "arguments": "-Name BITS"
+        },
+        {
+          "name": "service_spooler",
+          "type": "metric",
+          "command": "check_service.ps1",
+          "arguments": "-Name Spooler"
+        }
+      ]
+    },
+    {
+      "group_name": "slowchecks",
+      "max_execution_time": 120,
+      "ttl": 300,
+      "checks": [
+        {
+          "name": "check_http_content",
+          "type": "metric",
+          "command": "check_web_status.ps1",
+          "arguments": "-Site 'www.google.com' -Content '<title>Google</title>'"
+        }
+      ]
+    }
+  ]
+}

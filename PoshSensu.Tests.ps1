@@ -1,0 +1,1 @@
+﻿Import-Module .\PoshSensu.psd1 -Force

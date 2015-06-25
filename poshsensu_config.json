@@ -8,7 +8,7 @@
     {
       "group_name": "quickchecks",
       "max_execution_time": 30,
-      "ttl": 60,
+      "ttl": 10,
       "checks": [
         {
           "name": "service_bits",
@@ -27,13 +27,19 @@
     {
       "group_name": "slowchecks",
       "max_execution_time": 120,
-      "ttl": 300,
+      "ttl": 20,
       "checks": [
         {
           "name": "check_http_content",
           "type": "metric",
           "command": "check_web_status.ps1",
           "arguments": "-Site 'www.google.com' -Content '<title>Google</title>'"
+        },
+        {
+          "name": "service_w32time",
+          "type": "metric",
+          "command": "check_service.ps1",
+          "arguments": "-Name W32Time"
         }
       ]
     }

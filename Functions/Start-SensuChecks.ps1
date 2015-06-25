@@ -30,18 +30,25 @@ function Start-SensuChecks
 
         # Create the framework commands for the job
         $jobCommands = @()
+        # Create endless loop
+        $jobCommands += 'while ($true) {'
+        # Create stopwatch to track how long all the jobs are taking
+        $jobCommands += '$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()'
         $jobCommands += '$returnObject = @{}'
-        
+
+        # Create variable to keep track of if a check is actually added to a job
+        $jobToBeRun = 0
+                    
         # Validates each check first
         ForEach ($check in $checkgroup.checks)
-        {
+        {   
             # Using this instead of Resolve-Path so any warnings can provide the full path to the expected check location
             $checkScriptPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath((Join-Path -Path $Config.checks_directory -ChildPath $check.command))
         
             # Check if the check actually exists
             if (Test-Path -Path $checkScriptPath)
             {
-                #$validatedChecks.($checkgroup.group_name) += $check
+                $jobToBeRun++
 
                 Write-Verbose "[✔] Added Check to Job:"
                 Write-Verbose "[✔] Check Name: $($check.Name)"
@@ -56,6 +63,7 @@ function Start-SensuChecks
                 $jobCommands += '$returnObject.' + "$($check.Name)" + " = . ""$($checkScriptPath)"" $($check.arguments)"
                 $jobCommands += '}'
                 $jobCommands += 'catch { }'
+                $jobCommands += "Write-Verbose ""The check $($check.Name) took " + '$($stopwatch.Elapsed.Milliseconds)' + " milliseconds to execute."""
                 $jobCommands += '[System.GC]::Collect()'
             }
             else
@@ -68,15 +76,20 @@ function Start-SensuChecks
         }
 
         # If there are job commands for the group, create a background job
-        if ($jobCommands -ne '$returnObject = @{}')
+        if ($jobToBeRun -gt 0)
         {
-            $jobCommands += 'return $returnObject'
+            $jobCommands += 'Write-Output $returnObject'
+            $jobCommands += '$stopwatch.Stop()'
+            $jobCommands += 'Write-Verbose "Total time taken was $($stopwatch.Elapsed.Milliseconds) milliseconds."'
+            $jobCommands += 'if ($stopwatch.Elapsed.Seconds -le ' + "$($checkgroup.ttl)" + ') { Start-Sleep -Seconds (' + "$($checkgroup.ttl)" + ' - $stopwatch.Elapsed.Seconds) } '
+            $jobCommands += 'else { Write-Warning "Job took longer than ttl! Starting Immediately" }'
+            $jobCommands += '}'
             
             Write-Verbose "[✔] Creating background job for check group ""$($checkgroup.group_name)"""
             Write-Verbose ""
-            
+
             # Split the array into new lines and create a script block        
-            $scriptBlock = [Scriptblock]::Create($jobCommands -join "`r`n") 
+            $scriptBlock = [Scriptblock]::Create($jobCommands -join "`r`n")
 
             # Start background job
             $backgroundJobs += Start-BackgroundCollectionJob -Name "$($checkgroup.group_name)" -ScriptBlock $scriptBlock
@@ -88,93 +101,61 @@ function Start-SensuChecks
         }
     }
 
+    # Start infinate loop to read job info
+    while($true)
+    {
+        # Handle job timeouts / statuses
+        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
-    # Handle job timeouts / statuses
-    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-
-    ForEach ($checkgroup in $Config.check_groups)
-    { 
-        Write-Verbose "Finding matching background job for $($checkgroup.group_name).. "
+        # Process each background job that was started
         ForEach ($job in $backgroundJobs)
-        {   
-            Write-Verbose "==> Checking Against $($job.Name).. "
-            # Match up the job to the check_group
-            if ($checkgroup.group_name -eq $job.Name) 
+        {
+            # Test the job and save the results
+            $jobResult = Test-BackgroundCollectionJob -Job $job
+
+            # Build array of results to send
+            $checkResults = @()
+
+            # If the job tests ok, process the results
+            if ($jobResult -ne $false)
             {
-                Write-Verbose "[✔] Match Found!"
-                # Wait up until the groups max_execution_time minus the current time it has taken to process checks so far
-                $job | Wait-Job -Timeout ($checkgroup.max_execution_time - $stopwatch.Elapsed.TotalSeconds) | Out-Null
-                
-                # Stop the job
-                $job | Stop-Job
+                # Get a list of all the checks for this check group
+                $ChecksToValidate = $Config.check_groups | Where-Object { $_.group_name -eq $job.Name }
 
-                if ($job.State -eq 'Completed')
+                # Go through each check, trying to match it up with a result
+                ForEach ($check in $ChecksToValidate.checks)
                 {
-                    # Receive job results
-                    $jobResults = $job | Receive-Job
-
-                    # Remove the job
-                    $job | Remove-Job -Force
-
-                    # Process each check to add additional attributes
-                    ForEach ($check in $checkgroup.checks)
+                    # If there is a property on job result matching the check name
+                    if (Get-Member -InputObject $jobResult -Name $check.name -MemberType Properties)
                     {
-                        # Process each returned object from the job
-                        ForEach ($result in $jobResults)
-                        {
-                            # If there is a result for the check
-                            if ($result.($check.name) -ne $null)
-                            {
-                                Write-Verbose "[✔] Check ""$($check.name)"" has a result! Merging data from the configuration file with the check result."
+                        Write-Verbose "[✔] Check ""$($check.name)"" has a result! Merging data from the configuration file with the check result."
 
-                                # Turn the result into a PSObject (is currently a Deserialized.System.Collections.Hashtable)
-                                $resultObject = $result.($check.name) | ConvertTo-Json | ConvertFrom-Json
+                        # Merge all the data about the job and return it
+                        $finalCheckResult = Merge-HashtablesAndObjects -InputObjects $jobResult.($check.name),$ChecksToValidate,$check -ExcludeProperties 'checks' | ConvertTo-Json -Compress
+                        Write-Verbose "Check Result:"
+                        Write-Verbose $finalCheckResult
 
-                                # Get all the properties of the result
-                                $result_properties = (Get-Member -InputObject $resultObject -MemberType Properties).Name
-
-                                # Join the results to the check configuration (builds the object with more properties to send on
-                                ForEach ($property in $result_properties)
-                                {
-                                    Add-Member -InputObject $check -MemberType NoteProperty -Name $property -Value $result.($check.name).$property
-                                }
-
-                                # Get all the properties of the check group, execept for the checks
-                                $group_properties = (Get-Member -InputObject $checkgroup -MemberType Properties | Where-Object { $_.Name -ne 'checks' } ).Name
-
-                                # Join the results from the group
-                                ForEach ($property in $group_properties)
-                                {
-                                    Add-Member -InputObject $check -MemberType NoteProperty -Name $property -Value $checkgroup.$property
-                                }
-
-                                Write-Output $check | ConvertTo-Json
-                            }
-                        }
+                        $checkResults += $finalCheckResult 
                     }
-
-                    #Write-Output $jobResults | ConvertTo-Json
+                    else
+                    {
+                        Write-Warning "[X] Check ""$($check.name)"" does not have a result! Verify the test script exists or it returns a result when run manually."
+                    }
                 }
-                elseif ($job.State -eq 'Failed')
-                {
-                    Write-Warning "[X] Fail running background job for check group ""$($checkgroup.group_name)"""
-                    Write-warning "[X] Reason: $($job.ChildJobs[0].JobStateInfo.Reason)" 
-                }
-                # Job had to be stopped
-                elseif ($job.State -eq 'Stopped')
-                {
-                    Write-Warning "[X] Maximum execution time for job group ""$($checkgroup.group_name)"" was exceeded. Will send any checks that completed through."
-                    Write-warning "[X] max_execution_time: $($checkgroup.max_execution_time)" 
-                }
-                else
-                {
-                    Write-Warning "[X] Job group ""$($checkgroup.group_name)"" finished with unknown state. Please verify your check scripts manually."
-                    Write-warning "[X] Unexpceted Job State: $($job.State)" 
-                }                
             }
-        }
-    }
 
-    $stopwatch.Stop()
-    Write-Verbose "Total Execution Time For ($($backgroundJobs.Length)) background jobs: $($stopwatch.Elapsed.TotalSeconds)"
+            $checkResults | Send-DataTCP -ComputerName $Config.sensu_socket_ip -Port $Config.sensu_socket_port
+
+        }
+
+        $stopwatch.Stop()
+        Write-Verbose "Total Execution Time For ($($backgroundJobs.Length)) background jobs: $($stopwatch.Elapsed.TotalSeconds)"
+
+        # Sleep for the smallest ttl minus how long this run took
+        $lowestTTL = ($Config.check_groups.ttl | Sort-Object)[0]
+        $sleepTime = ($lowestTTL - $stopwatch.Elapsed.TotalSeconds)
+        Write-Verbose "All processing finished. Sleeping for $($sleepTime) seconds"
+        Start-Sleep -Seconds ($lowestTTL - $stopwatch.Elapsed.TotalSeconds)
+    }
+    
 }

@@ -51,19 +51,31 @@ function Start-BackgroundCollectionJob
         [Parameter(Mandatory=$true)]
         $Name,
     
-        # Arguments to pass to the Job
+        # Specifies the arguments (parameter values) for the script.
         $ArgumentList,
 
-        # Script to run for the job
-        $ScriptBlock
+        # Specifies the commands to run in the background job. Enclose the commands in braces ( { } ) to create a script block. 
+        $ScriptBlock,
+
+        # Specifies commands that run before the job starts. Enclose the commands in braces ( { } ) to create a script block.
+        $InitializationScript
     )
     
+    $Config = Import-JsonConfig -ConfigPath $configPath
+
+    $loggingDefaults = @{
+        'Path' = Join-Path -ChildPath $Config.logging_filename -Path $Config.logging_directory
+        'MaxFileSizeMB' = $Config.logging_max_file_size_mb
+        'ModuleName' = $MyInvocation.MyCommand.Name
+        'ShowLevel' = $Config.logging_level
+    }
 
     # Remove any jobs with the same name as the one that is going to be created
     Remove-Job -Name $Name -Force -ErrorAction SilentlyContinue
 
-    $job = Start-Job -Name $Name -ArgumentList $ArgumentList -ScriptBlock $ScriptBlock 
-    Write-Verbose "Started Background job ""$($Name)"""
+    $job = Start-Job -Name $Name -ArgumentList $ArgumentList -ScriptBlock $ScriptBlock -InitializationScript $InitializationScript
+
+    Write-PSLog @loggingDefaults -Method DEBUG -Message "Started Background job '$($Name)'"
 
     return $job
 
@@ -78,6 +90,15 @@ function Test-BackgroundCollectionJob
         [Parameter(Mandatory=$true)]
         $Job
     )
+
+    $Config = Import-JsonConfig -ConfigPath $configPath
+
+    $loggingDefaults = @{
+        'Path' = Join-Path -ChildPath $Config.logging_filename -Path $Config.logging_directory
+        'MaxFileSizeMB' = $Config.logging_max_file_size_mb
+        'ModuleName' = $MyInvocation.MyCommand.Name
+        'ShowLevel' = $Config.logging_level
+    }
 
     if (($job.State -eq 'Running') -and ($job.HasMoreData -eq $true))
     {
@@ -96,20 +117,20 @@ function Test-BackgroundCollectionJob
     }
     elseif ($job.State -eq 'Failed')
     {
-        Write-Warning "[X] Fail running background job for check group ""$($checkgroup.group_name)"""
-        Write-warning "[X] Reason: $($job.ChildJobs[0].JobStateInfo.Reason)" 
+        Write-PSLog @loggingDefaults -Method WARN -Message "Fail running background job for check group '$($checkgroup.group_name)'"
+        Write-PSLog @loggingDefaults -Method WARN -Message "  Reason: $($job.ChildJobs[0].JobStateInfo.Reason)" 
         return $false
     }
     # Job had to be stopped
     elseif ($job.State -eq 'Stopped')
     {
-        Write-Warning "[X] Background job stopped for some reason ""$($checkgroup.group_name)"". There is something that is breaking the infinate loop that should have occured."
+        Write-PSLog @loggingDefaults -Method WARN -Message "Background job stopped for some reason '$($checkgroup.group_name)'. There is something that is breaking the infinate loop that should have occured."
         return $false
     }
     else
     {
-        Write-Warning "[X] Job group ""$($checkgroup.group_name)"" finished with unknown state. Please verify your check scripts manually."
-        Write-warning "[X] Unexpceted Job State: $($job.State)"
+        Write-PSLog @loggingDefaults -Method WARN -Message "Job group '$($checkgroup.group_name)' finished with unknown state. Please verify your check scripts manually."
+        Write-PSLog @loggingDefaults -Method WARN -Message "  Unexpceted Job State: $($job.State)"
         return $false
     }  
 }
@@ -226,62 +247,53 @@ function Send-DataTCP
         $Port
     )
 
-    Begin
-    {
-    }
-    Process
-    {
-        ForEach ($d in $Data)
-        {
-            $dataArray += "$Data`n"
-        }
+    $Config = Import-JsonConfig -ConfigPath $configPath
+
+    $loggingDefaults = @{
+        'Path' = Join-Path -ChildPath $Config.logging_filename -Path $Config.logging_directory
+        'MaxFileSizeMB' = $Config.logging_max_file_size_mb
+        'ModuleName' = $MyInvocation.MyCommand.Name
+        'ShowLevel' = $Config.logging_level
     }
 
-    End
+    # If there is no data, do nothing. No good putting it in the Begin or process blocks
+    if (!$Data)
     {
-    
-        # If there is no data, do nothing. No good putting it in the Begin or process blocks
-        if (!$Data)
+        return
+    }
+    else
+    {           
+        try
         {
-            return
+            $socket = New-Object System.Net.Sockets.TCPClient
+            $socket.Connect($ComputerName, $Port)
+            $stream = $socket.GetStream()
+            $writer = New-Object System.IO.StreamWriter($stream)
+            $writer.WriteLine($Data)
+            $writer.Flush()
+            Write-Verbose "Sent via TCP to $($ComputerName) on port $($Port)."
         }
-        else
-        {           
-            try
+        catch
+        {
+            Write-PSLog @loggingDefaults -Method WARN -Message "Errors found during attempt: $_"
+        }
+        finally
+        {
+            # Clean up - Checks if variable is set without throwing error.
+            if (Test-Path variable:SCRIPT:writer)
             {
-                $socket = New-Object System.Net.Sockets.TCPClient
-                $socket.Connect($ComputerName, $Port)
-                $stream = $socket.GetStream()
-                $writer = New-Object System.IO.StreamWriter($stream)
-                foreach ($metricString in $dataArray)
-                {
-                    $writer.WriteLine($metricString)
-                }
-                $writer.Flush()
-                Write-Verbose "Sent via TCP to $($ComputerName) on port $($Port)."
+                $writer.Dispose()
             }
-            catch
+            if (Test-Path variable:SCRIPT:stream)
             {
-                Write-Warning "[CATCH] Errors found during attempt:`n$_"
+                $stream.Dispose()
             }
-            finally
+            if (Test-Path variable:SCRIPT:socket)
             {
-                # Clean up - Checks if variable is set without throwing error.
-                if (Test-Path variable:SCRIPT:writer)
-                {
-                    $writer.Dispose()
-                }
-                if (Test-Path variable:SCRIPT:stream)
-                {
-                    $stream.Dispose()
-                }
-                if (Test-Path variable:SCRIPT:socket)
-                {
-                    $socket.Dispose()
-                }
+                $socket.Dispose()
+            }
 
-                [System.GC]::Collect()
-            }
+            [System.GC]::Collect()
         }
     }
 }

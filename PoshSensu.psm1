@@ -14,6 +14,7 @@ ForEach ($ps1 in $ps1s)
 
 $functionsToExport = @(
     'Start-SensuChecks'
+    'Write-PSLog'
 )
 
 Export-ModuleMember -Function $functionsToExport

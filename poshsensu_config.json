@@ -2,7 +2,11 @@
   "sensu_socket_ip": "localhost",
   "sensu_socket_port": "3030",
   "sensu_socket_protocol": "tcp",
-  "log_directory": "C:\\Test\\Logs",
+  "logging_enabled": true,
+  "logging_level": "debug",
+  "logging_directory": "C:\\Test\\Logs",
+  "logging_filename": "poshsensu.log",
+  "logging_max_file_size_mb": "10",
   "checks_directory": ".\\Checks",
   "check_groups": [
     {

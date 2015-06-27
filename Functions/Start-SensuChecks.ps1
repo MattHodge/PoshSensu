@@ -44,11 +44,16 @@ function Start-SensuChecks
         $jobCommands += '$loggingDefaults = @{}'
         $jobCommands += '$loggingDefaults.Path = ''{0}''' -f $loggingDefaults.Path
         $jobCommands += '$loggingDefaults.MaxFileSizeMB = ''{0}''' -f $loggingDefaults.MaxFileSizeMB
-        $jobCommands += '$loggingDefaults.ModuleName = ''BackgroundJob_{0}''' -f $checkgroup.group_name
+        $jobCommands += '$loggingDefaults.ModuleName = ''Background Job [{0}]''' -f $checkgroup.group_name
         $jobCommands += '$loggingDefaults.ShowLevel = ''{0}''' -f $loggingDefaults.ShowLevel
 
         # Create variable to keep track of if a check is actually added to a job
         $jobToBeRun = 0
+
+        # Scale the ttl back by 4.5% to ensure that the checks in the background job complete in time
+        $scaledTTL = $checkgroup.ttl - ($checkgroup.ttl * 0.045)
+
+        $jobCommands += 'Write-PSLog @loggingDefaults -Method DEBUG -Message "TTL for checks in this group: {0}s. Scaled TTL for this group: {1}s"' -f $checkgroup.ttl,$scaledTTL
                     
         # Validates each check first
         ForEach ($check in $checkgroup.checks)
@@ -87,11 +92,12 @@ function Start-SensuChecks
 
         # If there are job commands for the group, create a background job
         if ($jobToBeRun -gt 0)
-        {
+        {          
             $jobCommands += 'Write-Output $returnObject' # 
             $jobCommands += '$stopwatch.Stop()'
-            $jobCommands += 'Write-PSLog @loggingDefaults -Method DEBUG -Message "Total time taken for all checks was $($stopwatch.Elapsed.Milliseconds) milliseconds."'
-            $jobCommands += 'if ($stopwatch.Elapsed.Seconds -le {0}) {{ Start-Sleep -Seconds ({1} - $stopwatch.Elapsed.Seconds) }}' -f $checkgroup.ttl,$checkgroup.ttl # Wait until the TTL has been reached for the check.
+            $jobCommands += 'Write-PSLog @loggingDefaults -Method DEBUG -Message "Total time taken for all checks in the group: $($stopwatch.Elapsed.Milliseconds)ms"'
+            $jobCommands += '$timeToSleep = {0} - $stopwatch.Elapsed.Seconds' -f $scaledTTL
+            $jobCommands += 'if ($stopwatch.Elapsed.Seconds -lt {0}) {{ Start-Sleep -Seconds $timeToSleep ; Write-PSLog @loggingDefaults -Method DEBUG -Message "Sleeping check group for $($timeToSleep)s before starting the checks again" }}' -f $scaledTTL # Wait until the TTL has been reached for the check.
             $jobCommands += 'else { Write-Warning "Job took longer than ttl! Starting Immediately" }'
             $jobCommands += '}'
             
@@ -141,8 +147,7 @@ function Start-SensuChecks
 
                         # Merge all the data about the job and return it
                         $finalCheckResult = Merge-HashtablesAndObjects -InputObjects $jobResult.($check.name),$ChecksToValidate,$check -ExcludeProperties 'checks' | ConvertTo-Json -Compress
-                        Write-PSLog @loggingDefaults -Method DEBUG -Message "Check Result:"
-                        Write-PSLog @loggingDefaults -Method DEBUG -Message "  $finalCheckResult"
+                        Write-PSLog @loggingDefaults -Method DEBUG -Message "Check Result: $finalCheckResult"
 
                         $finalCheckResult | Send-DataTCP -ComputerName $Config.sensu_socket_ip -Port $Config.sensu_socket_port
                     }
@@ -155,12 +160,12 @@ function Start-SensuChecks
         }
 
         $stopwatch.Stop()
-        Write-PSLog @loggingDefaults -Method INFO -Message "Total Execution Time For ($($backgroundJobs.Length)) background jobs: $($stopwatch.Elapsed.TotalSeconds)"
+        Write-PSLog @loggingDefaults -Method INFO -Message "Total Execution Time For $($backgroundJobs.Length) Background Job(s): $($stopwatch.Elapsed.Seconds)s"
 
         # Sleep for the smallest ttl minus how long this run took
         $lowestTTL = ($Config.check_groups.ttl | Sort-Object)[0]
         $sleepTime = ($lowestTTL - $stopwatch.Elapsed.TotalSeconds)
-        Write-PSLog @loggingDefaults -Method DEBUG -Message "All processing finished. Sleeping for $($sleepTime) seconds"
+        Write-PSLog @loggingDefaults -Method DEBUG -Message "All processing has finished for the background jobs. Sleeping for $($sleepTime)s"
         Start-Sleep -Seconds ($lowestTTL - $stopwatch.Elapsed.TotalSeconds)
     }
     

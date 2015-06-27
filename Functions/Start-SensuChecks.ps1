@@ -40,6 +40,12 @@ function Start-SensuChecks
         # Create stopwatch to track how long all the jobs are taking
         $jobCommands += '$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()'
         $jobCommands += '$returnObject = @{}'
+        # Build Logging Object
+        $jobCommands += '$loggingDefaults = @{}'
+        $jobCommands += '$loggingDefaults.Path = ''{0}''' -f $loggingDefaults.Path
+        $jobCommands += '$loggingDefaults.MaxFileSizeMB = ''{0}''' -f $loggingDefaults.MaxFileSizeMB
+        $jobCommands += '$loggingDefaults.ModuleName = ''BackgroundJob_{0}''' -f $checkgroup.group_name
+        $jobCommands += '$loggingDefaults.ShowLevel = ''{0}''' -f $loggingDefaults.ShowLevel
 
         # Create variable to keep track of if a check is actually added to a job
         $jobToBeRun = 0
@@ -66,19 +72,11 @@ function Start-SensuChecks
                 # An Example:
                 # $returnObject.my_check_name = . "C:\Sensu\Checks\my_check.ps1" -Name Value
 
-                # Build Logging Object
-                $jobCommands += '$loggingDefaults = @{}'
-                $jobCommands += '$loggingDefaults.Path = ' + "'$($loggingDefaults.Path)'"
-                $jobCommands += '$loggingDefaults.MaxFileSizeMB = ' + "'$($loggingDefaults.MaxFileSizeMB)'"
-                $jobCommands += '$loggingDefaults.ModuleName = ' + "'BackgroundJob_$($checkgroup.group_name)'"
-                $jobCommands += '$loggingDefaults.ShowLevel = ' + "'$($loggingDefaults.ShowLevel)'"
-                # Create a try / catch block
-                $jobCommands += 'try {'
-                $jobCommands += '$returnObject.' + "$($check.Name)" + " = . ""$($checkScriptPath)"" $($check.arguments)"
-                $jobCommands += '}'
-                # Make any errors log from the catch blog
-                $jobCommands += 'catch { Write-PSLog @loggingDefaults -Method WARN -Message "$_" }'
-                $jobCommands += "Write-PSLog @loggingDefaults -Method DEBUG -Message ""The check $($check.Name) took " + '$($stopwatch.Elapsed.Milliseconds)' + " milliseconds to execute."""
+                $jobCommands += 'try {' # Start of try block for the check
+                $jobCommands += '$returnObject.{0} = . ''{1}'' {2}' -f $check.Name,$checkScriptPath,$check.arguments # Dot sources the check .ps1 and passes arguments
+                $jobCommands += '}' # End of try block for the check
+                $jobCommands += 'catch { Write-PSLog @loggingDefaults -Method WARN -Message "$_" }' # Log errors that occur in the check
+                $jobCommands += 'Write-PSLog @loggingDefaults -Method DEBUG -Message "The check {0} took $($stopwatch.Elapsed.Milliseconds) milliseconds to execute"' -f $check.Name
                 $jobCommands += '[System.GC]::Collect()'
             }
             else
@@ -90,10 +88,10 @@ function Start-SensuChecks
         # If there are job commands for the group, create a background job
         if ($jobToBeRun -gt 0)
         {
-            $jobCommands += 'Write-Output $returnObject'
+            $jobCommands += 'Write-Output $returnObject' # 
             $jobCommands += '$stopwatch.Stop()'
-            $jobCommands += 'Write-Verbose "Total time taken was $($stopwatch.Elapsed.Milliseconds) milliseconds."'
-            $jobCommands += 'if ($stopwatch.Elapsed.Seconds -le ' + "$($checkgroup.ttl)" + ') { Start-Sleep -Seconds (' + "$($checkgroup.ttl)" + ' - $stopwatch.Elapsed.Seconds) } '
+            $jobCommands += 'Write-PSLog @loggingDefaults -Method DEBUG -Message "Total time taken for all checks was $($stopwatch.Elapsed.Milliseconds) milliseconds."'
+            $jobCommands += 'if ($stopwatch.Elapsed.Seconds -le {0}) {{ Start-Sleep -Seconds ({1} - $stopwatch.Elapsed.Seconds) }}' -f $checkgroup.ttl,$checkgroup.ttl # Wait until the TTL has been reached for the check.
             $jobCommands += 'else { Write-Warning "Job took longer than ttl! Starting Immediately" }'
             $jobCommands += '}'
             

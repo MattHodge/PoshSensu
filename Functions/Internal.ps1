@@ -275,7 +275,7 @@ function Send-DataTCP
         }
         catch
         {
-            Write-PSLog @loggingDefaults -Method WARN -Message "Errors found during attempt: $_"
+            Write-PSLog @loggingDefaults -Method ERROR -Message "$_"
         }
         finally
         {

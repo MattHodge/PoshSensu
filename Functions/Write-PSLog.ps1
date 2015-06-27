@@ -46,6 +46,8 @@
                 New-Item -Path $pathDir -ItemType Directory -Force | Out-Null
             }
         }
+
+        $Message = "$(Get-Date -Format s) [$([System.Diagnostics.Process]::GetCurrentProcess().Id)] - $($ModuleName) - $($Method) - $($Message)"
     }
     Process
     {
@@ -122,8 +124,6 @@
                     Move-Item -Path $Path -Destination "$($Path).old" -Force
                 }
             }
-            
-            #Add-Content -Path $Path -Value "$(Get-Date -Format s) [$([System.Diagnostics.Process]::GetCurrentProcess().Id)] - $($ModuleName) - $($Method) - $($Message)"
 
             try
             {
@@ -137,7 +137,7 @@
                 $sw = New-Object System.IO.StreamWriter($fs)
 
                 # write something and remember to call to Dispose to clean up the resources
-                $sw.WriteLine("$(Get-Date -Format s) [$([System.Diagnostics.Process]::GetCurrentProcess().Id)] - $($ModuleName) - $($Method) - $($Message)")
+                $sw.WriteLine($Message)
             }
             finally
             {

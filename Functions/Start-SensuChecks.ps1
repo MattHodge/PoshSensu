@@ -28,6 +28,25 @@ function Start-SensuChecks
     # Create array hold background jobs
     $backgroundJobs = @()
 
+    # Get list of valid checks
+    $validChecks = Import-SensuChecks -Config $Config
+
+    # Build the background jobs
+    $bgJobsScriptBlocks = Format-SensuChecks -SensuChecks $validChecks
+
+    $modulePath = "$(Split-Path -Path $PSScriptRoot)\PoshSensu.psd1"
+    $initScriptForJob = "Import-Module '$($modulePath)'"
+    $initScriptForJob = [scriptblock]::Create($initScriptForJob)
+
+    ForEach ($bgJobScript in $bgJobsScriptBlocks.GetEnumerator())
+    {
+        Write-PSLog @loggingDefaults -Method INFO -Message "Creating Background Job ::: Check Group: $($bgJobScript.Key)"
+
+        # Start background job. InitializationScript loads the PoshSensu module
+        $backgroundJobs += Start-BackgroundCollectionJob -Name "$($bgJobScript.Key)" -ScriptBlock $bgJobScript.Value -InitializationScript $initScriptForJob
+    }
+    
+    <#
     # $Config.check_groups is ordered by max_execution_time
     ForEach ($checkgroup in $Config.check_groups)
     {   
@@ -115,6 +134,7 @@ function Start-SensuChecks
             Write-PSLog @loggingDefaults -Method WARN -Message "Group Has No Valid Checks ::: Check Group: $($checkgroup.group_name)"
         }
     }
+    #>
 
     # Start infinate loop to read job info
     while($true)

@@ -81,6 +81,27 @@ function Start-BackgroundCollectionJob
 
 }
 
+<#
+    .Synopsis
+        Tests the state of a background collection job.
+
+    .Description
+        Tests the state of a background collection job and returns the job results as JSON if there is data. If there is no data or there is an error, returns false.
+
+    .Parameter Job
+        A PSRemotingJob object
+
+    .Example
+        Test-BackgroundCollectionJob -Job $job
+
+        Tests a job in the variable $job
+
+    .Notes
+        NAME:      Test-BackgroundCollectionJob
+        AUTHOR:    Matthew Hodgkins
+        WEBSITE:   http://www.hodgkins.net.au
+
+#>
 function Test-BackgroundCollectionJob
 {
     [CmdletBinding()]
@@ -88,6 +109,7 @@ function Test-BackgroundCollectionJob
     (
         # Job Name
         [Parameter(Mandatory=$true)]
+        [System.Management.Automation.Job]
         $Job
     )
 
@@ -100,37 +122,38 @@ function Test-BackgroundCollectionJob
         'ShowLevel' = $Config.logging_level
     }
 
-    if (($job.State -eq 'Running') -and ($job.HasMoreData -eq $true))
-    {
-        # Turn the result into a PSObject (is currently a Deserialized.System.Collections.Hashtable)
-        $jobResults = $job | Receive-Job
+    $testedJob = $Job | Get-Job
 
+    if (($testedJob.State -eq 'Running') -and ($testedJob.HasMoreData -eq $true))
+    {
+        $jobResults = $testedJob | Receive-Job
+        Write-PSLog @loggingDefaults -Method DEBUG -Message "Backgound Running and Has Data ::: Check group: $($testedJob.Name)"
+            
         # Check if the results are not null (even though HasMoreData is true, sometimes there may not be data)
-        if ($jobResults -ne $null)
-        {
-            return $jobResults | ConvertTo-Json | ConvertFrom-Json
-        }
-        else
+        if ([string]::IsNullOrEmpty($jobResults))
         {
             return $false
         }
+        else
+        {
+            # Convert to and from JSON as the data is a serialized object
+            return $jobResults | ConvertTo-Json | ConvertFrom-Json
+        }
     }
-    elseif ($job.State -eq 'Failed')
+    elseif ($testedJob.State -eq 'Failed')
     {
-        Write-PSLog @loggingDefaults -Method WARN -Message "Fail running background job for check group '$($checkgroup.group_name)'"
-        Write-PSLog @loggingDefaults -Method WARN -Message "  Reason: $($job.ChildJobs[0].JobStateInfo.Reason)" 
+        Write-PSLog @loggingDefaults -Method WARN -Message "Failed Backgound Job ::: Check group: $($testedJob.Name) Reason: $($testedJob.ChildJobs[0].JobStateInfo.Reason)"
         return $false
     }
     # Job had to be stopped
-    elseif ($job.State -eq 'Stopped')
+    elseif ($testedJob.State -eq 'Stopped')
     {
-        Write-PSLog @loggingDefaults -Method WARN -Message "Background job stopped for some reason '$($checkgroup.group_name)'. There is something that is breaking the infinate loop that should have occured."
+        Write-PSLog @loggingDefaults -Method WARN -Message "Stopped Backgound Job ::: Check group: $($testedJob.Name) Reason: There is something that is breaking the infinate loop that should have occured."
         return $false
     }
     else
     {
-        Write-PSLog @loggingDefaults -Method WARN -Message "Job group '$($checkgroup.group_name)' finished with unknown state. Please verify your check scripts manually."
-        Write-PSLog @loggingDefaults -Method WARN -Message "  Unexpceted Job State: $($job.State)"
+        Write-PSLog @loggingDefaults -Method WARN -Message "Unexpected Result From Backgound Job ::: Check group: $($testedJob.Name) Job State: $($testedJob.State) Extra Help: Please verify your check scripts manually"
         return $false
     }  
 }
@@ -349,6 +372,7 @@ function Import-SensuChecks
                 $checkObject = New-Object PSObject -Property @{            
                         Group = $checkgroup.group_name           
                         TTL = $checkgroup.ttl
+                        Interval = $checkgroup.interval
                         Name = $check.Name              
                         Path = $checkScriptPath
                         Arguments = $check.arguments
@@ -420,7 +444,7 @@ function Format-SensuChecks
     # Build the wrapper code for the start of each background job
     ForEach ($checkgroup in $arrayOfGroups)
     {
-        # Only grab one of the tests from the group so we can access the TTL
+        # Only grab one of the tests from the group so we can access the Interval and TTL
         $SensuChecks | Where-Object { $_.Group -eq $checkgroup } | Get-Unique | ForEach-Object {
 
             Write-Verbose "Adding header code for '$($_.Group)' check group."
@@ -443,10 +467,10 @@ function Format-SensuChecks
                     `$loggingDefaults.ModuleName = 'Background Job [$($_.Group)]'
                     `$loggingDefaults.ShowLevel = '$($loggingDefaults.ShowLevel)'
 
-                    # Scale the ttl back by 4.5% to ensure that the checks in the background job complete in time
-                    `$scaledTTL = $($_.TTL) - ($($_.TTL) * 0.045)
+                    # Scale the interval back by 4.5% to ensure that the checks in the background job complete in time
+                    `$scaledInterval = $($_.Interval) - ($($_.Interval) * 0.045)
 
-                    `Write-PSLog @loggingDefaults -Method DEBUG -Message ""TTLs ::: Check Group: $($_.TTL)s Check Group Scaled: `$(`$scaledTTL)s""
+                    `Write-PSLog @loggingDefaults -Method DEBUG -Message ""Intervals ::: Check Group: $($_.Interval)s Check Group Scaled: `$(`$scaledInterval)s""
             "
             
             # Add this command into the script block            
@@ -483,7 +507,7 @@ function Format-SensuChecks
     # Build the wrapper code for the end of each background job
     ForEach ($checkgroup in $arrayOfGroups)
     {
-        # Only grab one of the tests from the group so we can access the TTL
+        # Only grab one of the tests from the group so we can access the Interval
         $SensuChecks | Where-Object { $_.Group -eq $checkgroup } | Get-Unique | ForEach-Object {
             
             Write-Verbose "Adding footer code for '$($_.Group)' check group."
@@ -498,17 +522,17 @@ function Format-SensuChecks
                     `$stopwatch.Stop()
 
                     # Figure out how long to sleep for
-                    `$timeToSleep = `$scaledTTL - `$stopwatch.Elapsed.Seconds
+                    `$timeToSleep = `$scaledInterval - `$stopwatch.Elapsed.Seconds
 
-                    if (`$stopwatch.Elapsed.Seconds -lt `$scaledTTL)
+                    if (`$stopwatch.Elapsed.Seconds -lt `$scaledInterval)
                     {
-                        # Wait until the TTL has been reached for the check.
+                        # Wait until the interval has been reached for the check.
                         Start-Sleep -Seconds `$timeToSleep
                         Write-PSLog @loggingDefaults -Method DEBUG -Message ""Sleeping Check Group :::  Sleep Time: `$(`$timeToSleep)s""
                     }
                     else
                     {
-                        Write-Warning ""Job Took Longer Than TTL! Starting It Again Immediately""
+                        Write-Warning ""Job Took Longer Than Interval! Starting It Again Immediately""
                     }
 
                     [System.GC]::Collect()

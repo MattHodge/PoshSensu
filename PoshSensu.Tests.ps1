@@ -4,21 +4,24 @@ $json_prevalidatedSensuChecks = @"
 [
     {
         "Arguments":  "-Name BITS",
-        "TTL":  10,
+        "TTL":  20,
+        "Interval":  10,
         "Group":  "quickchecks",
         "Path":  "E:\\ProjectsGit\\PoshSensu\\Checks\\check_service.ps1",
         "Name":  "service_bits"
     },
     {
         "Arguments":  "-Name Spooler",
-        "TTL":  10,
+        "TTL":  20,
+        "Interval":  10,
         "Group":  "quickchecks",
         "Path":  "E:\\ProjectsGit\\PoshSensu\\Checks\\check_service.ps1",
         "Name":  "service_spooler"
     },
     {
         "Arguments":  "-Name W32Time",
-        "TTL":  20,
+        "TTL":  40,
+        "Interval":  20,
         "Group":  "slowchecks",
         "Path":  "E:\\ProjectsGit\\PoshSensu\\Checks\\check_service.ps1",
         "Name":  "service_w32time"

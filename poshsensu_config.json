@@ -12,7 +12,8 @@
     {
       "group_name": "quickchecks",
       "max_execution_time": 30,
-      "ttl": 10,
+      "ttl": 120,
+      "interval": 60,
       "checks": [
         {
           "name": "service_bits",
@@ -31,7 +32,8 @@
     {
       "group_name": "slowchecks",
       "max_execution_time": 120,
-      "ttl": 20,
+      "ttl": 120,
+      "interval": 60,
       "checks": [
         {
           "name": "check_http_content",

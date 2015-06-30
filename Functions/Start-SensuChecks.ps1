@@ -16,44 +16,68 @@ function Start-SensuChecks
 
     )
 
+    # Load the config the first time
     $Config = Import-JsonConfig -ConfigPath $configPath
 
-    $loggingDefaults = @{
-        'Path' = Join-Path -ChildPath $Config.logging_filename -Path $Config.logging_directory
-        'MaxFileSizeMB' = $Config.logging_max_file_size_mb
-        'ModuleName' = $MyInvocation.MyCommand.Name
-        'ShowLevel' = $Config.logging_level
-    }
-
-    # Create array hold background jobs
-    $backgroundJobs = @()
-
-    # Get list of valid checks
-    $validChecks = Import-SensuChecks -Config $Config
-
-    # Build the background jobs
-    $bgJobsScriptBlocks = Format-SensuChecks -SensuChecks $validChecks
-
-    $modulePath = "$(Split-Path -Path $PSScriptRoot)\PoshSensu.psd1"
-    $initScriptForJob = "Import-Module '$($modulePath)'"
-    $initScriptForJob = [scriptblock]::Create($initScriptForJob)
-
-    ForEach ($bgJobScript in $bgJobsScriptBlocks.GetEnumerator())
-    {
-        Write-PSLog @loggingDefaults -Method INFO -Message "Creating Background Job ::: Check Group: $($bgJobScript.Key)"
-
-        # Start background job. InitializationScript loads the PoshSensu module
-        $backgroundJobs += Start-BackgroundCollectionJob -Name "$($bgJobScript.Key)" -ScriptBlock $bgJobScript.Value -InitializationScript $initScriptForJob
-    }
+    $firstScriptRun = $true
 
     # Start infinate loop to read job info
     while($true)
     {
+        # Get latest time the config file was written
+        $configFileLastChanged = (Get-Item -Path $ConfigPath).LastWriteTime
+
+        #####
+        # The below if statement is for reloading everything if the configuration file is changed.
+        ##### 
+
+        # If this is the first time the function has been run OR If the config file written date is greater than the date of the config file when it was last imported
+        if (($firstScriptRun) -or ($configFileLastChanged -gt $Config.last_config_update))
+        {
+            $firstScriptRun = $false
+
+            # Relaod the config
+            $Config = Import-JsonConfig -ConfigPath $configPath
+
+            # Remove all backgroud jobs incase they changed in the config
+            Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
+
+            $loggingDefaults = @{
+                'Path' = Join-Path -ChildPath $Config.logging_filename -Path $Config.logging_directory
+                'MaxFileSizeMB' = $Config.logging_max_file_size_mb
+                'ModuleName' = $MyInvocation.MyCommand.Name
+                'ShowLevel' = $Config.logging_level
+            }
+
+            Write-PSLog @loggingDefaults -Method DEBUG -Message "Config File Reload ::: Config Path: $($configPath) Reason: First script run or config file changed"
+
+            # Create array hold background jobs
+            $backgroundJobs = @()
+
+            # Get list of valid checks
+            $validChecks = Import-SensuChecks -Config $Config
+
+            # Build the background jobs
+            $bgJobsScriptBlocks = Format-SensuChecks -SensuChecks $validChecks
+
+            $modulePath = "$(Split-Path -Path $PSScriptRoot)\PoshSensu.psd1"
+            $initScriptForJob = "Import-Module '$($modulePath)'"
+            $initScriptForJob = [scriptblock]::Create($initScriptForJob)
+
+            ForEach ($bgJobScript in $bgJobsScriptBlocks.GetEnumerator())
+            {
+                Write-PSLog @loggingDefaults -Method INFO -Message "Creating Background Job ::: Check Group: $($bgJobScript.Key)"
+
+                # Start background job. InitializationScript loads the PoshSensu module
+                $backgroundJobs += Start-BackgroundCollectionJob -Name "$($bgJobScript.Key)" -ScriptBlock $bgJobScript.Value -InitializationScript $initScriptForJob
+            }
+        }
+        
         # Handle job timeouts / statuses
         $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
         # Create variable to track if this is the first run
-        $firstRun = $true
+        $firstBGJobRun = $true
 
         # Process each background job that was started
         ForEach ($job in $backgroundJobs)
@@ -65,7 +89,7 @@ function Start-SensuChecks
             if ($jobResult -ne $false)
             {
                 # First run has occured
-                $firstRun = $false
+                $firstBGJobRun = $false
 
                 # Get a list of all the checks for this check group
                 $ChecksToValidate = $Config.check_groups | Where-Object { $_.group_name -eq $job.Name }
@@ -87,6 +111,7 @@ function Start-SensuChecks
                     else
                     {
                         Write-PSLog @loggingDefaults -Method WARN -Message "Check Has No Result ::: Check Name: $($check.name) Additonal Help: Verify the check by running it manually out side of PoshSensu"
+                        Write-PSLog @loggingDefaults -Method WARN -Message "Check Has No Result ::: Result Returned: $($jobResult | ConvertTo-Json)"
                     }
                 }
             }
@@ -95,7 +120,7 @@ function Start-SensuChecks
         $stopwatch.Stop()
 
         # If this is the first run and no data has come back yet, sleep for a second and try again
-        if ($firstRun)
+        if ($firstBGJobRun)
         {
             Start-Sleep -Seconds 2
             Write-PSLog @loggingDefaults -Method INFO -Message "No Data From Background Jobs ::: Details: No data has been returned from background jobs yet. Looping again quickly to see if any data has been returend yet."
@@ -106,7 +131,7 @@ function Start-SensuChecks
             # Sleep for the lowest interval minus how long this run took
             $lowestInterval = ($Config.check_groups.interval | Sort-Object)[0]
             $sleepTime = ($lowestInterval - $stopwatch.Elapsed.TotalSeconds)
-            Write-PSLog @loggingDefaults -Method INFO -Message "All Background Jobs Complete ::: Total Background Job(s): $($backgroundJobs.Length) Total Time Taken: $($stopwatch.Elapsed.Seconds)s Sleeping For: $($sleepTime)s"
+            Write-PSLog @loggingDefaults -Method INFO -Message "All Background Jobs Complete ::: Total Background Job(s): $($backgroundJobs.Length) Total Time Taken: $($stopwatch.Elapsed.Milliseconds)ms Sleeping For: $($sleepTime)s"
             Start-Sleep -Seconds ($lowestInterval - $stopwatch.Elapsed.TotalSeconds)
         }
     }

@@ -39,6 +39,9 @@
     # Sort the checks by max exeuction time so they can be started first
     $Config.check_groups = $Config.check_groups | Sort-Object -Property max_execution_time
 
+    # Add the date when the configuration file was last written
+    Add-Member -InputObject $Config –NotePropertyName last_config_update –NotePropertyValue (Get-Item -Path $ConfigPath).LastWriteTime
+
     Return $Config
 }
 

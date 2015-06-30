@@ -96,20 +96,12 @@
                 [int]
                 $MaxFileSizeMB,
 
-                # The Module or Function That Is Logging
-                [Parameter(Mandatory=$true)]
-                $ModuleName,
-
                 # The log message to write
                 [Parameter(Mandatory=$true)]
-                $Message,
-
-                # The method to display the log message
-                [Parameter(Mandatory=$false)]
-                [ValidateSet("DEBUG", "INFO", "WARN", "ERROR")]
-                [string]
-                $Method
+                $Message
             )
+
+
         
             # Move the old log file over
             if (Test-Path -Path $Path)
@@ -123,41 +115,43 @@
                 {
                     Move-Item -Path $Path -Destination "$($Path).old" -Force
                 }
+            }         
+
+            # If the write_ps_log_queue variable doesnt exist
+            if (-not(Test-Path variable:global:write_ps_log_queue))
+            {
+                $global:write_ps_log_queue = New-Object System.Collections.Queue
+                Write-Verbose "creating var write_ps_log_queue"
             }
 
             try
-            {
-                # setup some convenience variables to keep each line shorter
-                $mode = [System.IO.FileMode]::Append
-                $access = [System.IO.FileAccess]::Write
-                $sharing = [IO.FileShare]::Read
+            {               
+                while ($global:write_ps_log_queue.Count -gt 0)
+                {
+                        # Peak at the message and try and write it
+                        Add-Content -Path $Path -Value ($global:write_ps_log_queue.Peek()) -ErrorAction Stop
 
-                # create the FileStream and StreamWriter objects
-                $fs = New-Object IO.FileStream($Path, $mode, $access, $sharing)
-                $sw = New-Object System.IO.StreamWriter($fs)
+                        # If no failure, remove from queue
+                        $global:write_ps_log_queue.Dequeue() | Out-Null
 
-                # write something and remember to call to Dispose to clean up the resources
-                $sw.WriteLine($Message)
+                        Write-Verbose "Message de-queued and written to log file. $($global:write_ps_log_queue.Count) items remain in the queue."
+                }
+
+                Add-Content -Path $Path -Value $Message -ErrorAction Stop
             }
-            finally
+            catch
             {
-                if ($sw -ne $NULL)
-                {
-                    $sw.Dispose()
-                }
-                if ($fs -ne $NULL)
-                {
-                    $fs.Dispose()
-                }
+                 
+                # Add the message to the queue
+                $global:write_ps_log_queue.Enqueue($Message)
+                Write-Verbose "Log file busy, putting message in a queue."
             }
         }
         
         $splathForWriteLogFile = @{
             'Path' = $Path
             'MaxFileSizeMB' = $MaxFileSizeMB
-            'ModuleName' = $ModuleName
             'Message' = $Message
-            'Method' = $Method
         }
 
         switch ($Method)

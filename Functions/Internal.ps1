@@ -29,6 +29,12 @@
 
     $Config = Get-Content -Path $ConfigPath | Out-String | ConvertFrom-Json
 
+    # If checks directory is '.\Checks', this needs to be searched in the module path.
+    if ($Config.checks_directory -eq '.\Checks')
+    {
+        $Config.checks_directory = Join-Path -Path $here -ChildPath 'Checks'
+    }
+
     $checksFullPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Config.checks_directory)
 
     if (-not(Test-Path -Path $checksFullPath))

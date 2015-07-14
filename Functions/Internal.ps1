@@ -279,22 +279,22 @@ function Send-DataTCP
         $Port
     )
 
-    $Config = Import-JsonConfig -ConfigPath $configPath
-
-    $loggingDefaults = @{
-        'Path' = Join-Path -ChildPath $Config.logging_filename -Path $Config.logging_directory
-        'MaxFileSizeMB' = $Config.logging_max_file_size_mb
-        'ModuleName' = $MyInvocation.MyCommand.Name
-        'ShowLevel' = $Config.logging_level
-    }
-
     # If there is no data, do nothing. No good putting it in the Begin or process blocks
     if (!$Data)
     {
         return
     }
     else
-    {           
+    {     
+        $Config = Import-JsonConfig -ConfigPath $configPath
+
+        $loggingDefaults = @{
+            'Path' = Join-Path -ChildPath $Config.logging_filename -Path $Config.logging_directory
+            'MaxFileSizeMB' = $Config.logging_max_file_size_mb
+            'ModuleName' = $MyInvocation.MyCommand.Name
+            'ShowLevel' = $Config.logging_level
+        }
+
         try
         {
             $socket = New-Object System.Net.Sockets.TCPClient

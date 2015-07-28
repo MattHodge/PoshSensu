@@ -1,10 +1,9 @@
 {
   "sensu_socket_ip": "localhost",
   "sensu_socket_port": "3030",
-  "sensu_socket_protocol": "tcp",
   "logging_enabled": true,
   "logging_level": "debug",
-  "logging_directory": "C:\\Test\\Logs",
+  "logging_directory": "C:\\opt\\sensu",
   "logging_filename": "poshsensu.log",
   "logging_max_file_size_mb": "10",
   "checks_directory": ".\\Checks",
@@ -32,8 +31,8 @@
     {
       "group_name": "slowchecks",
       "max_execution_time": 120,
-      "ttl": 120,
-      "interval": 60,
+      "ttl": 600,
+      "interval": 300,
       "checks": [
         {
           "name": "check_http_content",

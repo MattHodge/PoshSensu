@@ -24,6 +24,14 @@ This module aims to resolve this problem.
 1. Modify the `poshsensu_config.json` configuration file. Instructions here.
 1. Open PowerShell and ensure you set your Execution Policy to allow scripts be run. For example `Set-ExecutionPolicy RemoteSigned`.
 
+## Installing as a Service
+```
+Start-Process -FilePath .\nssm.exe -ArgumentList 'install PoshSensu "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" "-command "& { Import-Module -Name PoshSensu ; Start-SensuChecks }"" ' -NoNewWindow -Wait
+Start-Process -FilePath .\nssm.exe -ArgumentList 'set PoshSensu DependOnService "Sensu Client"' -NoNewWindow -Wait
+Start-Process -FilePath .\nssm.exe -ArgumentList 'set PoshSensu Description "PoshSensu - The PowerShell check runner for Sensu."' -NoNewWindow -Wait
+Start-Service -Name PoshSensu
+```
+
 ### Modifying the Configuration File
 
 The following section details each setting in the configuration file.

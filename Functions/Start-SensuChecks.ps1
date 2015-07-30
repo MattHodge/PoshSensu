@@ -85,33 +85,38 @@ function Start-SensuChecks
             # Test the job and save the results
             $jobResult = Test-BackgroundCollectionJob -Job $job
 
-            # If the job tests ok, process the results
-            if ($jobResult -ne $false)
+            # If the script gets the timing incorrect - there may be more than one result set returned. Loop through each of them.
+
+            ForEach ($j in $jobResult)
             {
-                # First run has occured
-                $firstBGJobRun = $false
-
-                # Get a list of all the checks for this check group
-                $ChecksToValidate = $Config.check_groups | Where-Object { $_.group_name -eq $job.Name }
-
-                # Go through each check, trying to match it up with a result
-                ForEach ($check in $ChecksToValidate.checks)
+                # If the job tests ok, process the results
+                if ($j -ne $false)
                 {
-                    # If there is a property on job result matching the check name 
-                    if (Get-Member -InputObject $jobResult -Name $check.name -MemberType Properties)
-                    {
-                        Write-PSLog @loggingDefaults -Method DEBUG -Message "Check Result Returned. Merging Data From Config File ::: Check Name: $($check.name)"
+                    # First run has occured
+                    $firstBGJobRun = $false
 
-                        # Merge all the data about the job and return it
-                        $finalCheckResult = Merge-HashtablesAndObjects -InputObjects $jobResult.($check.name),$ChecksToValidate,$check -ExcludeProperties 'checks' | ConvertTo-Json -Compress
-                        Write-PSLog @loggingDefaults -Method DEBUG -Message "Check Result ::: Check Name: $($check.name) Result: $finalCheckResult"
+                    # Get a list of all the checks for this check group
+                    $ChecksToValidate = $Config.check_groups | Where-Object { $_.group_name -eq $job.Name }
 
-                        $finalCheckResult | Send-DataTCP -ComputerName $Config.sensu_socket_ip -Port $Config.sensu_socket_port
-                    }
-                    else
+                    # Go through each check, trying to match it up with a result
+                    ForEach ($check in $ChecksToValidate.checks)
                     {
-                        Write-PSLog @loggingDefaults -Method WARN -Message "Check Has No Result ::: Check Name: $($check.name) Additonal Help: Verify the check by running it manually out side of PoshSensu"
-                        Write-PSLog @loggingDefaults -Method WARN -Message "Check Has No Result ::: Result Returned: $($jobResult | ConvertTo-Json)"
+                        # If there is a property on job result matching the check name 
+                        if (Get-Member -InputObject $j -Name $check.name -MemberType Properties)
+                        {
+                            Write-PSLog @loggingDefaults -Method DEBUG -Message "Check Result Returned. Merging Data From Config File ::: Check Name: $($check.name)"
+
+                            # Merge all the data about the job and return it
+                            $finalCheckResult = Merge-HashtablesAndObjects -InputObjects $j.($check.name),$ChecksToValidate,$check -ExcludeProperties 'checks' | ConvertTo-Json -Compress
+                            Write-PSLog @loggingDefaults -Method DEBUG -Message "Check Result ::: Check Name: $($check.name) Result: $finalCheckResult"
+
+                            $finalCheckResult | Send-DataTCP -ComputerName $Config.sensu_socket_ip -Port $Config.sensu_socket_port
+                        }
+                        else
+                        {
+                            Write-PSLog @loggingDefaults -Method WARN -Message "Check Has No Result ::: Check Name: $($check.name) Additonal Help: Verify the check by running it manually out side of PoshSensu"
+                            Write-PSLog @loggingDefaults -Method WARN -Message "Check Has No Result ::: Result Returned: $($j | ConvertTo-Json)"
+                        }
                     }
                 }
             }

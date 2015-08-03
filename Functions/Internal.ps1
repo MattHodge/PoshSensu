@@ -495,8 +495,24 @@ function Format-SensuChecks
         "
             try
             {
-                # Dot sources the check .ps1 and passes arguments
-                `$returnObject.$($check.Name) = . ""$($check.Path)"" $($check.Arguments)
+                # Check if this is a function being passed or a not by checking for the ~ character at the start of the arugment
+                if (""$($check.Arguments[0])"" -eq ""~"")
+                {
+                    # Dot source the function
+                    . ""$($check.Path)""
+
+                    # Strip the ~ and any space infront of the argument
+                    `$cleanedArg = ""$($check.Arguments)"" -replace ""^~\s+"",""""
+
+                    # Execute the function and its paramaters
+                    `$returnObject.$($check.Name) = Invoke-Expression -Command `$cleanedArg
+
+                }
+                else
+                {
+                    # Dot sources the check .ps1 and passes arguments
+                    `$returnObject.$($check.Name) = . ""$($check.Path)"" $($check.Arguments)
+                }
             }
             catch
             {

@@ -71,18 +71,62 @@ checks | `N/A` | Array of checks
 #### Check Configuration
 A check is the PowerShell script that will be run, with the results being sent to the Sensu client.
 
+PoshSensu allows two methods to execute a check, depending on how the check script is written in PowerShell.
+
+##### Check written as Advanced PowerShell Function
+This is the most common method of writing advanced PowerShell functions. You wrap PowerShell code in a `function Get-Beer { #logic }` block. To use these functions in PowerShell you would usually dot source and then execute the function with paramaters. For example:
+
+```
+# Dot Source the function
+. .\Get-Beer.ps1
+# Execute the function with optional paramaters
+Get-Beer -Location 'The Fridge'
+```
+
+To use a PowerShell function with a check, the check configration option `arguments` uses a special syntax - it has a  `~` in front of the function name and paramaters. Here is a configuration example of what a check running a function would look like:
+```
+{
+  "name": "disk_c",
+  "type": "metric",
+  "command": "Get-VolumePercentUsed.ps1",
+  "arguments": "~ Get-VolumePercentUsed -Identifier DeviceID -Value 'E:'"
+}
+```
+Take note of the `~` in front of the function call. This tells PoshSensu it is a function and to dot source it first.
+
+##### Check written with parameters but not as an Advanced PowerShell Function
+This is a less commonly used method to write PowerShell functions that require input. They usually have a paramater block, but are not wrapped in the `function` tags. These are executed diferently in PowerShell, for example:
+
+```
+ # Run the function and pass paramaters on the same line
+ .\check_service.ps1 -Name 'Netlogon'
+```
+To execute a check like this with PoshSensu, the check configuration would look like this:
+
+```
+{
+  "name": "service_spooler",
+  "type": "metric",
+  "command": "check_service.ps1",
+  "arguments": "-Name Spooler"
+}
+```
+
+
 Key | Example Value | Description
 --- | --- | ---
 name | `service_bits` | Name of the check that will be sent to Sensu
 type | `metric` | The check type, either `standard` or `metric`. Setting type to metric will cause OK (exit 0) check results to create events. I recommend keeping this on `metric`
 command | `check_service.ps1` | The file name of the check to execute in PowerShell. These checks are located in the `checks_directory` configuration value configured previously.
-arguments | `-Name BITS` | Any arguments that are required to run the PowerShell check. Useful when using parameters in your checks.
+arguments | `-Name BITS` | Any arguments that are required to run the PowerShell check. Useful when using parameters in your checks. If the check is an advanced PowerShell function, use a `~` in front of the function call. If your arguments contain a variable, for example `$true`, make sure you escape it with a back tick (``$true`)
 
 ## How To Write a PowerShell Check
 
 Writing checks for use with the Sensu PowerShell module is quiet simple. The only requirement is that they return a PSObject or Hash with the mandatory fields `output` and `status`
 
 It is also a good idea to parameterize your checks so they are more useful across multiple servers.
+
+You can use Advanced Functions that have paramaters or just simple PowerShell scripts that return a result without requiring any parameters.
 
 Mandatory Field | Example Value | Description
 --- | --- | ---

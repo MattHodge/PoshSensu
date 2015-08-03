@@ -11,7 +11,7 @@
     {
       "group_name": "quickchecks",
       "max_execution_time": 30,
-      "ttl": 120,
+      "ttl": 180,
       "interval": 60,
       "checks": [
         {
@@ -25,20 +25,32 @@
           "type": "metric",
           "command": "check_service.ps1",
           "arguments": "-Name Spooler"
+        },
+        {
+          "name": "disk_c",
+          "type": "metric",
+          "command": "Get-VolumePercentUsed.ps1",
+          "arguments": "~ Get-VolumePercentUsed -Identifier DeviceID -Value 'C:'"
+        },
+        {
+          "name": "proc_lsass",
+          "type": "metric",
+          "command": "Get-ProcessStatus.ps1",
+          "arguments": "~ Get-ProcessStatus -ProcessName lsass -ProcessRunning `$true"
         }
       ]
     },
     {
       "group_name": "slowchecks",
       "max_execution_time": 120,
-      "ttl": 600,
-      "interval": 300,
+      "ttl": 360,
+      "interval": 120,
       "checks": [
         {
-          "name": "check_http_content",
+          "name": "ping_google",
           "type": "metric",
-          "command": "check_web_status.ps1",
-          "arguments": "-Site 'www.google.com' -Content '<title>Google</title>'"
+          "command": "Get-PingResponseTime.ps1",
+          "arguments": "~ Get-PingResponseTime -ComputerName 8.8.8.8 -WarningThreshold 50 -ErrorThreshold 70"
         },
         {
           "name": "service_w32time",

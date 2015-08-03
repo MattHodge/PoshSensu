@@ -50,13 +50,13 @@
           "name": "ping_google",
           "type": "metric",
           "command": "Get-PingResponseTime.ps1",
-          "arguments": "~ Get-PingResponseTime -ComputerName 8.8.8.8 -WarningThreshold 50 -ErrorThreshold 70"
+          "arguments": "~ Get-PingResponseTime -ComputerName www.google.com -WarningThreshold 50 -ErrorThreshold 70"
         },
         {
-          "name": "service_w32time",
+          "name": "tcp_google_443",
           "type": "metric",
-          "command": "check_service.ps1",
-          "arguments": "-Name W32Time"
+          "command": "Test-TCPConnection.ps1",
+          "arguments": "~ Test-TCPConnection -ComputerName www.google.com -Port 443"
         }
       ]
     }

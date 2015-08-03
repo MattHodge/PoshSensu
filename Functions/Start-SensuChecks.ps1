@@ -13,7 +13,10 @@ function Start-SensuChecks
     [CmdletBinding()]
     Param
     (
-
+        # Enable Test Mode. Check results just outputted to screen instead of sent to Sensu Client. 
+        [Parameter(Mandatory=$false)]
+        [switch]
+        $TestMode = $false
     )
 
     # Load the config the first time
@@ -107,10 +110,18 @@ function Start-SensuChecks
                             Write-PSLog @loggingDefaults -Method DEBUG -Message "Check Result Returned. Merging Data From Config File ::: Check Name: $($check.name)"
 
                             # Merge all the data about the job and return it
-                            $finalCheckResult = Merge-HashtablesAndObjects -InputObjects $j.($check.name),$ChecksToValidate,$check -ExcludeProperties 'checks' | ConvertTo-Json -Compress
+                            $finalCheckResult = Merge-HashtablesAndObjects -InputObjects $j.($check.name),$ChecksToValidate,$check -ExcludeProperties 'checks' | ConvertTo-Json
                             Write-PSLog @loggingDefaults -Method DEBUG -Message "Check Result ::: Check Name: $($check.name) Result: $finalCheckResult"
 
-                            $finalCheckResult | Send-DataTCP -ComputerName $Config.sensu_socket_ip -Port $Config.sensu_socket_port
+                            if ($TestMode)
+                            {
+                                Write-Output $finalCheckResult
+                            }
+                            else
+                            {
+                                $finalCheckResult | Send-DataTCP -ComputerName $Config.sensu_socket_ip -Port $Config.sensu_socket_port
+                            }
+                            
                         }
                         else
                         {

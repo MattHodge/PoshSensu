@@ -21,7 +21,8 @@ This module aims to resolve this problem.
 ## Installation
 1. Download the repository and place into a PowerShell Modules directory called PoshSensu. The module directories can be found by running `$env:PSModulePath` in PowerShell. For example, `C:\Program Files\WindowsPowerShell\Modules\PoshSensu`
 1. Make sure the files are un-blocked by right clicking on them and going to properties
-1. Modify the `poshsensu_config.json` configuration file. Instructions here.
+1. Copy the `poshsensu_config.json.example` to `poshsensu_config.json`
+1. Modify the `poshsensu_config.json` configuration file. Instructions on the configuration options.
 1. Open PowerShell and ensure you set your Execution Policy to allow scripts be run. For example `Set-ExecutionPolicy RemoteSigned`.
 
 ## Installing as a Service

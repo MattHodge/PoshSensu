@@ -11,19 +11,20 @@ This module aims to resolve this problem.
 
 ## Features
 * Sends check results to Sensu Cleint via TCP to the the [client socket input](https://sensuapp.org/docs/latest/clients#client-socket-input) feature
-* Easily to use json configuration file
+* Easily to use JSON configuration file
 * Allows setting different check groups that may have different max execution times, ttl's or execution intervals
 * Automatic configuration file reloads allowing adding additional checks without having to restart any services
 * Detailed logging (can be turned off)
 * Runs checks using PowerShell Background Jobs
 * Rotates its own log file
+* Runs as a service
 
 ## Installation
 1. Download the repository and place into a PowerShell Modules directory called PoshSensu. The module directories can be found by running `$env:PSModulePath` in PowerShell. For example, `C:\Program Files\WindowsPowerShell\Modules\PoshSensu`
 1. Make sure the files are un-blocked by right clicking on them and going to properties
 1. Make a new folder to store the configuration file, for example, `C:\PoshSensu`
 1. Copy the `poshsensu_config.json.example` to `C:\PoshSensu\poshsensu_config.json`
-1. Modify the `poshsensu_config.json` configuration file. Instructions on the configuration options.
+1. Modify the `poshsensu_config.json` configuration file. Instructions in the [Modifying the Configuration File](#confighelp) section.
 1. Open PowerShell and ensure you set your Execution Policy to allow scripts be run. For example `Set-ExecutionPolicy RemoteSigned`.
 
 ## Verification
@@ -72,7 +73,7 @@ Get-Service -Name PoshSensu
 
 It is a good idea to check the PoshSensu log file for any errors.
 
-### Modifying the Configuration File
+### <a name="confighelp"> Modifying the Configuration File
 
 The following section details each setting in the configuration file.
 

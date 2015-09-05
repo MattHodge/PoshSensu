@@ -16,8 +16,26 @@ function Start-SensuChecks
         # Enable Test Mode. Check results just outputted to screen instead of sent to Sensu Client. 
         [Parameter(Mandatory=$false)]
         [switch]
-        $TestMode = $false
+        $TestMode = $false,
+
+        # Path to the PoshSensu configuration file 
+        [Parameter(Mandatory=$false)]
+        [ValidateScript({
+        if(Test-Path -Path $_ -ErrorAction SilentlyContinue)
+        {
+            return $true
+        }
+        else
+        {
+            throw "$($_) is not a valid path."
+        }
+        })]
+        [string]
+        $ConfigPath = $false
     )
+
+    # Setting global variable for the configuration file path
+    $global:configPath = $ConfigPath 
 
     # Load the config the first time
     $Config = Import-JsonConfig -ConfigPath $configPath

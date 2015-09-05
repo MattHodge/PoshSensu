@@ -21,23 +21,62 @@ This module aims to resolve this problem.
 ## Installation
 1. Download the repository and place into a PowerShell Modules directory called PoshSensu. The module directories can be found by running `$env:PSModulePath` in PowerShell. For example, `C:\Program Files\WindowsPowerShell\Modules\PoshSensu`
 1. Make sure the files are un-blocked by right clicking on them and going to properties
-1. Copy the `poshsensu_config.json.example` to `poshsensu_config.json`
+1. Make a new folder to store the configuration file, for example, `C:\PoshSensu`
+1. Copy the `poshsensu_config.json.example` to `C:\PoshSensu\poshsensu_config.json`
 1. Modify the `poshsensu_config.json` configuration file. Instructions on the configuration options.
 1. Open PowerShell and ensure you set your Execution Policy to allow scripts be run. For example `Set-ExecutionPolicy RemoteSigned`.
 
+## Verification
+You can verify PoshSensu is working correctly by running it in `TestMode`. This will show all output to the screen but not actually send check results to the Sensu server.
+
+Open a PowerShell window and do the following:
+```
+# Import the module
+Import-Module -Name PoshSensu
+
+# Start PoshSensu in TestMode
+Start-SensuChecks -ConfigPath 'C:\PoshSensu\poshsensu_config.json' -TestMode
+```
+You should see some JSON output of the script starting and the checks returning, which should look similar to this:
+
+![PoshSensu Test Mode](http://i.imgur.com/ksPt7wv.png)
+
+You can also run the script without the `TestMode` switch in the PowerShell console and checks should be sent to the local Sensu Client.
+
+After you are happy everything is working correctly, you can install PoshSensu as a service.
+
 ## Installing as a Service
+The easiest way to achieve this is using NSSM - the Non-Sucking Service Manager.
+
+1. Download nssm from [nssm.cc](http://nssm.cc/)
+1. Extract the zip file to your machine, for example to `C:\nssm-2.24`
+
+Now you can use NSSM and PowerShell to install the service:
+
 ```
-Start-Process -FilePath .\nssm.exe -ArgumentList 'install PoshSensu "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" "-command "& { Import-Module -Name PoshSensu ; Start-SensuChecks }"" ' -NoNewWindow -Wait
-Start-Process -FilePath .\nssm.exe -ArgumentList 'set PoshSensu DependOnService "Sensu Client"' -NoNewWindow -Wait
+# Change to the nssm path
+cd C:\nssm-2.24\win64
+
+# Install Service
+Start-Process -FilePath .\nssm.exe -ArgumentList 'install PoshSensu "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" "-command "& { Import-Module -Name PoshSensu ; Start-SensuChecks -ConfigPath "C:\PoshSensu\poshsensu_config.json" }"" ' -NoNewWindow -Wait
+
+# Set the service description
 Start-Process -FilePath .\nssm.exe -ArgumentList 'set PoshSensu Description "PoshSensu - The PowerShell check runner for Sensu."' -NoNewWindow -Wait
+
+# Start the service
 Start-Service -Name PoshSensu
+
+# Make sure the service is running
+Get-Service -Name PoshSensu
 ```
+
+It is a good idea to check the PoshSensu log file for any errors.
 
 ### Modifying the Configuration File
 
 The following section details each setting in the configuration file.
 
-**NOTE:** When using json configuration files, backslashes need to be escaped, for example `\` would be `\\`.
+**NOTE:** When using JSON configuration files, backslashes need to be escaped, for example `\` would be `\\`.
 
 #### Main Configuration
 Key | Default Value | Description
@@ -46,10 +85,10 @@ sensu_socket_ip | `localhost` | IP address or host name of the Sensu client wher
 sensu_socket_port | `3030` | TCP Port of the Sensu client socket input
 logging_enabled | `true` | Enable or disable logging to a file
 logging_level | `debug` | Level of logging to perform. Valid options are `debug`, `info`, `warn`, `error`
-logging_directory | `C:\\opt\\sensu` | Directory to store the log file. The directory will be created if it doesn't exist
+logging_directory | `C:\\PoshSensu` | Directory to store the log file. The directory will be created if it doesn't exist
 logging_filename | `poshsensu.log` | Name for the log file
 logging_max_file_size_mb | `10` | The size of the log file before it is rotated
-checks_directory | `.\\Checks` | The directory that contains the PowerShell checks. Use a full path here except when the Checks directory is located in the module directory
+checks_directory | `C:\\Program Files\\WindowsPowerShell\\Modules\\PoshSensu\\Checks` | The directory that contains the PowerShell checks.
 check_groups | `N/A` | Array of check groups
 
 #### Check Group Configuration
@@ -57,7 +96,7 @@ A Check Group is a grouping of checks. Each check group is run in its own PowerS
 
 The reason there is multiple check groups it to allow you to bundle checks together that have the same check interval.
 
-You can additionally add any other json key/value for the check group and it will get sent to the Sensu client. All key/values in the check group configuration section (including the defaults) are sent to the Sensu server.
+You can additionally add any other JSON key/value for the check group and it will get sent to the Sensu client. All key/values in the check group configuration section (including the defaults) are sent to the Sensu server.
 
 The below values can be configured for a check group:
 
@@ -123,16 +162,16 @@ arguments | `-Name BITS` | Any arguments that are required to run the PowerShell
 
 ## How To Write a PowerShell Check
 
-Writing checks for use with the Sensu PowerShell module is quiet simple. The only requirement is that they return a PSObject or Hash with the mandatory fields `output` and `status`
-
-It is also a good idea to parameterize your checks so they are more useful across multiple servers.
-
-You can use Advanced Functions that have paramaters or just simple PowerShell scripts that return a result without requiring any parameters.
+Writing checks for use with the Sensu PowerShell module is reasonably simple. The only requirement is that they return a PSObject or Hash with the mandatory fields `output` and `status`
 
 Mandatory Field | Example Value | Description
 --- | --- | ---
 output | `Serivce Check OK: The lanmanworkstation service is running.` | This is where the result or an explanation of the check status is returned
 status | `1` | A number which relates to Sensu status code. `0` for `OK`, `1` for `WARNING`, `2` for `CRITICAL` and `3` or greater to indicate `UNKNOWN`
+
+It is also a good idea to parameterize your checks so they are more useful across multiple servers.
+
+You can use Advanced Functions that have paramaters or just simple PowerShell scripts that return a result without requiring any parameters.
 
 The check can also return key/value which will get sent to the Sensu client. This is handy for providing some more details on the check, for example in the `check_service.ps1` check, I am also retrieving `DisplayName`, `DependentServices`, `RequiredServices` and `Status` properties from the service object in PowerShell and returning them. These details show up when the check has a problem:
 

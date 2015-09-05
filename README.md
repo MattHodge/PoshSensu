@@ -30,7 +30,7 @@ This module aims to resolve this problem.
 You can verify PoshSensu is working correctly by running it in `TestMode`. This will show all output to the screen but not actually send check results to the Sensu server.
 
 Open a PowerShell window and do the following:
-```
+```powershell
 # Import the module
 Import-Module -Name PoshSensu
 
@@ -53,7 +53,7 @@ The easiest way to achieve this is using NSSM - the Non-Sucking Service Manager.
 
 Now you can use NSSM and PowerShell to install the service:
 
-```
+```powershell
 # Change to the nssm path
 cd C:\nssm-2.24\win64
 
@@ -116,7 +116,7 @@ PoshSensu allows two methods to execute a check, depending on how the check scri
 ##### Check written as Advanced PowerShell Function
 This is the most common method of writing advanced PowerShell functions. You wrap PowerShell code in a `function Get-Beer { #logic }` block. To use these functions in PowerShell you would usually dot source and then execute the function with paramaters. For example:
 
-```
+```powershell
 # Dot Source the function
 . .\Get-Beer.ps1
 # Execute the function with optional paramaters
@@ -124,7 +124,7 @@ Get-Beer -Location 'The Fridge'
 ```
 
 To use a PowerShell function with a check, the check configration option `arguments` uses a special syntax - it has a  `~` in front of the function name and paramaters. Here is a configuration example of what a check running a function would look like:
-```
+```json
 {
   "name": "disk_c",
   "type": "metric",
@@ -137,13 +137,13 @@ Take note of the `~` in front of the function call. This tells PoshSensu it is a
 ##### Check written with parameters but not as an Advanced PowerShell Function
 This is a less commonly used method to write PowerShell functions that require input. They usually have a paramater block, but are not wrapped in the `function` tags. These are executed diferently in PowerShell, for example:
 
-```
+```powershell
  # Run the function and pass paramaters on the same line
  .\check_service.ps1 -Name 'Netlogon'
 ```
 To execute a check like this with PoshSensu, the check configuration would look like this:
 
-```
+```json
 {
   "name": "service_spooler",
   "type": "metric",

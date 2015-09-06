@@ -16,6 +16,7 @@ This module aims to resolve this problem.
 * Automatic configuration file reloads allowing adding additional checks without having to restart any services
 * Detailed logging (can be turned off)
 * Runs checks using PowerShell Background Jobs
+* Checks can be loaded from multiple JSON files, making configuration management and templating of checks easy.
 * Rotates its own log file
 * Runs as a service
 
@@ -73,6 +74,13 @@ Get-Service -Name PoshSensu
 
 It is a good idea to check the PoshSensu log file for any errors.
 
+You can remove the service by running the following:
+```powershell
+Stop-Service -Name PoshSensu -Force
+cd C:\nssm-2.24\win64
+Start-Process -FilePath .\nssm.exe -ArgumentList 'remove PoshSensu confirm'
+```
+
 ### <a name="confighelp"> Modifying the Configuration File
 
 The following section details each setting in the configuration file.
@@ -91,6 +99,7 @@ logging_filename | `poshsensu.log` | Name for the log file
 logging_max_file_size_mb | `10` | The size of the log file before it is rotated
 checks_directory | `C:\\Program Files\\WindowsPowerShell\\Modules\\PoshSensu\\Checks` | The directory that contains the PowerShell checks.
 check_groups | `N/A` | Array of check groups
+check_group_path | `null` | Optional path to directory containing JSON files of additional check groups that will be merged into the configuration file.
 
 #### Check Group Configuration
 A Check Group is a grouping of checks. Each check group is run in its own PowerShell instance using Background Jobs.
@@ -98,6 +107,10 @@ A Check Group is a grouping of checks. Each check group is run in its own PowerS
 The reason there is multiple check groups it to allow you to bundle checks together that have the same check interval.
 
 You can additionally add any other JSON key/value for the check group and it will get sent to the Sensu client. All key/values in the check group configuration section (including the defaults) are sent to the Sensu server.
+
+There are 2 methods for adding check groups to the configuration file:
+1. Add them in the main configuration file as a JSON array (shown in `poshsensu_config.json.example`)
+2. Configure the `check_group_path` option in the configuration file to point to a directory containing multiple JSON files, each containing its own check group (show in `poshsensu_config.json.example2`).
 
 The below values can be configured for a check group:
 
@@ -108,6 +121,31 @@ max_execution_time | `30` | Used to determine the check group run order. Does no
 ttl | `120` | Sent to Sensu so it knows how often the check should be received. If no message is received in this time period, Sensu will throw a warning.
 interval | `60` | How often each check in this group needs to be run
 checks | `N/A` | Array of checks
+
+Here is an example of a check group configuration that is in its own JSON file (located in `.\CheckGroups\checkgroup_services.json`):
+
+```json
+{
+  "group_name": "check_services",
+  "max_execution_time": 15,
+  "ttl": 125,
+  "interval": 60,
+  "checks": [
+    {
+      "name": "service_dhcp",
+      "type": "metric",
+      "command": "check_service.ps1",
+      "arguments": "-Name Dhcp"
+    },
+    {
+      "name": "service_ip_helper",
+      "type": "metric",
+      "command": "check_service.ps1",
+      "arguments": "-Name iphlpsvc"
+    }
+  ]
+}
+```
 
 #### Check Configuration
 A check is the PowerShell script that will be run, with the results being sent to the Sensu client.

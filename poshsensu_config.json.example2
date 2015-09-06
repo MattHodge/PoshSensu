@@ -1,0 +1,12 @@
+{
+  "sensu_socket_ip": "localhost",
+  "sensu_socket_port": "3030",
+  "logging_enabled": true,
+  "logging_level": "debug",
+  "logging_directory": "C:\\PoshSensu\\Logs",
+  "logging_filename": "poshsensu.log",
+  "logging_max_file_size_mb": "10",
+  "checks_directory": "C:\\Program Files\\WindowsPowerShell\\Modules\\PoshSensu\\",
+  "check_groups_path": "C:\\PoshSensu\\CheckGroups",
+  "check_groups": null
+}

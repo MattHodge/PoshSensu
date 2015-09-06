@@ -1,0 +1,20 @@
+{
+  "group_name": "check_services",
+  "max_execution_time": 15,
+  "ttl": 125,
+  "interval": 60,
+  "checks": [
+    {
+      "name": "service_dhcp",
+      "type": "metric",
+      "command": "check_service.ps1",
+      "arguments": "-Name Dhcp"
+    },
+    {
+      "name": "service_ip_helper",
+      "type": "metric",
+      "command": "check_service.ps1",
+      "arguments": "-Name iphlpsvc"
+    }
+  ]
+}

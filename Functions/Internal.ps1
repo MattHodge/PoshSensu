@@ -42,6 +42,30 @@
         throw "Configuration File Error: check_path in the configuration file does not exist ($checksFullPath)."
     }
 
+    # Folder containing check group additional configuration files
+
+    # Check if value is not null or empty
+    if (-not([string]::IsNullOrEmpty($Config.check_groups_path)))
+    {
+        if (Test-Path -Path $Config.check_groups_path)
+        {
+            # Get only the json files
+            $additionalChecks = Get-ChildItem -Path $Config.check_groups_path -Include "*.json" -Recurse
+
+            # Loop through each and add to check groups
+            ForEach ($ac in $additionalChecks)
+            {
+                Write-Verbose "Adding CheckGroup configuration file $($Config.check_groups_path)"
+                $cg = Get-Content -Path $ac.FullName | Out-String | ConvertFrom-Json
+                $Config.check_groups += $cg
+            }
+        }
+        else
+        {
+            throw "Configuration File Error: check_groups_path in the configuration file does not exist ($($Config.check_groups_path))"
+        }
+    }
+
     # Sort the checks by max exeuction time so they can be started first
     $Config.check_groups = $Config.check_groups | Sort-Object -Property max_execution_time
 

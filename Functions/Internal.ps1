@@ -42,6 +42,12 @@
         throw "Configuration File Error: check_path in the configuration file does not exist ($checksFullPath)."
     }
 
+    # If check groups is empty, make an empty array as we will have some checks to add from the additional config files
+    if ([string]::IsNullOrEmpty($Config.check_groups))
+    {
+        $Config.check_groups = @()
+    }
+
     # Folder containing check group additional configuration files
 
     # Check if value is not null or empty

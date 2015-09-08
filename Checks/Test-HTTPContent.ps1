@@ -61,19 +61,19 @@ function Test-HTTPContent
         if ($content.Content -match $ContentToMatch)
         {
             $sensu_status = 0
-            $output = "Content match found on page"
+            $output = "Match FOUND on page $($Uri)"
         }
         else
         {
             $sensu_status = 2
-            $output = "Content match not found on page"
+            $output = "Match NOT FOUND on page $($Uri)"
             $metricObject.rawcontent = $content.RawContent
         }
     }
     catch
     {
         $sensu_status = 2
-        $output = "Error trying to access $($Uri)"
+        $output = "Error trying to access page $($Uri)"
     }
 
     $metricObject.output = $output

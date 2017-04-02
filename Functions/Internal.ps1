@@ -207,71 +207,99 @@ function Test-BackgroundCollectionJob
 
    Merges the $lah HashTable and $ChecksToValidate PSObject into a single PSObject.
 #>
-function Merge-HashtablesAndObjects
-{
-    [CmdletBinding()]
-    Param
-    (
+Function Merge-HashtablesAndObjects {
+    [CmdletBinding(DefaultParameterSetName='Name')]
+    Param (
+        #
+        # Add parametersetname for recursive. We should accept a PSObject as 'baseobject' etc.
+        #
         # An array of hashtables or PSobjects to merge.
         [Parameter(
-            Position=0, 
-            Mandatory=$true, 
-            ValueFromPipeline=$true,
-            ValueFromPipelineByPropertyName=$true)
+            Position = 0,
+            Mandatory = $true,
+            ValueFromPipeline = $true,
+            ValueFromPipelineByPropertyName = $true,
+            ParameterSetName = 'Name')
         ]
         [ValidateNotNull()]
         [ValidateNotNullOrEmpty()]
-        $InputObjects,
+        $InputObjects, #
 
         # Array of properties to exclude
         [Parameter(
-            Position=1, 
-            Mandatory=$false, 
-            ValueFromPipeline=$true,
-            ValueFromPipelineByPropertyName=$true)
+            Position = 1, 
+            Mandatory = $false, 
+            ValueFromPipeline = $true,
+            ValueFromPipelineByPropertyName = $true,
+            ParameterSetName = 'Name')
         ]
         [ValidateNotNull()]
         [ValidateNotNullOrEmpty()]
         [String[]]
-        $ExcludeProperties,
+        $ExcludeProperties, #
 
         # Overrides memebers when adding objects
-        [Parameter(Mandatory=$false)]
+        [Parameter(
+            Mandatory = $false,
+            ParameterSetName = 'Name')]
         [ValidateNotNull()]
         [ValidateNotNullOrEmpty()]
         [Switch]
-        $Force
+        $Force #
     )
 
-    Begin
-    {
-        $returnObject = New-Object PSObject -Property @{}
+    Begin {
+        $returnObject = New-Object -TypeName PSObject
     }
-    Process
-    {
-        ForEach($o in $InputObjects)
-        {
-            if ($o -is [System.Collections.Hashtable])
-            {
-                $o.GetEnumerator() | Where-Object { $_.Key -notin $ExcludeProperties } |  ForEach-Object { 
-                    Add-Member -InputObject $returnObject -MemberType NoteProperty -Name $_.Key -Value $_.Value -Force:$Force
-                }
-                
+    Process {
+        $InputObjects | ForEach-Object {
+            $cur_obj = $_
+            $props = $null
+
+            # Grab properties
+            if ($cur_obj -is [System.Collections.Hashtable]) {
+                $props = $cur_obj.keys
+            } elseif ($cur_obj -is [System.Management.Automation.PSCustomObject]) {
+                $props = (Get-Member -InputObject $cur_obj -MemberType Properties).Name
             }
-            if ($o -is [System.Management.Automation.PSCustomObject])
-            {
-                 $properties = (Get-Member -InputObject $o -MemberType Properties).Name | Where-Object { $_ -notin $ExcludeProperties } 
 
-                 ForEach ($p in $properties)
-                 {
-                    Add-Member -InputObject $returnObject -MemberType NoteProperty -Name $p -Value $o.$p -Force:$Force
-                 }
+            # Filter out unwanted props
+            If($ExcludeProperties) {
+                $props = $props | Where-Object { $ExcludeProperties -notcontains $_ }
+            }
 
+            $recurse_typenames = @()
+            $recurse_typenames += 'System.Collections.HashTable'
+            $recurse_typenames += 'System.Management.Automation.PSCustomObject'
+			#$recurse_typenames += 'System.Object[]'
+
+            # Merge
+            $props | ForEach-Object {
+                $cur_prop_name = $null
+                $cur_prop_name = $_
+                $cur_value = $null
+                $cur_value = $cur_obj.$cur_prop_name
+                
+                $final_val = $null
+                If($null -eq $cur_value -or "" -eq $cur_value) {
+                } Else {
+                    $cur_val_type_name = $null
+                    $cur_val_type_name = $cur_value.PSObject.TypeNames[0]
+
+                    If($recurse_typenames -contains $cur_val_type_name) {
+                        $final_val = Merge-HashtablesAndObjects $cur_value # Returns PSObject
+                    } Else {
+                        $final_val = $cur_value
+                    }
+                }
+
+                Add-Member -InputObject $returnObject -MemberType NoteProperty -Name $cur_prop_name -Value $final_val -Force:$Force
             }
         }
     }
-    End
-    {
+    End {
+		$json_output = convertto-json $returnObject -Depth 10 -Compress
+		Write-PSLog @loggingDefaults -Method DEBUG -Message "Merge result: $json_output"
         return $returnObject
     }
 }

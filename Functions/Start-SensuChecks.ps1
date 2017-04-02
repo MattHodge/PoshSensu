@@ -128,9 +128,11 @@ function Start-SensuChecks
                             Write-PSLog @loggingDefaults -Method DEBUG -Message "Check Result Returned. Merging Data From Config File ::: Check Name: $($check.name)"
 
                             # Merge all the data about the job and return it
-                            $finalCheckResult = Merge-HashtablesAndObjects -InputObjects $j.($check.name),$ChecksToValidate,$check -ExcludeProperties 'checks' | ConvertTo-Json
+                            $finalCheckResultPso = $null
+                            $finalCheckResultPso = Merge-HashtablesAndObjects -InputObjects $j.($check.name),$ChecksToValidate,$check -ExcludeProperties 'checks'
+                            $finalCheckResult = $null
+                            $finalCheckResult = ConvertTo-Json ($finalCheckResultPso) -Depth 10 -Compress
                             Write-PSLog @loggingDefaults -Method DEBUG -Message "Check Result ::: Check Name: $($check.name) Result: $finalCheckResult"
-
                             if ($TestMode)
                             {
                                 Write-Output $finalCheckResult
